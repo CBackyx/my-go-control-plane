@@ -36,8 +36,8 @@ const (
 	RouteName    = "local_route"
 	ListenerName = "listener_0"
 	ListenerPort = 10000
-	UpstreamHost = "www.envoyproxy.io"
-	UpstreamPort = 80
+	UpstreamHost = "www.baidu.com"
+	UpstreamPort = 443
 )
 
 func makeCluster(clusterName string) *cluster.Cluster {
@@ -47,7 +47,7 @@ func makeCluster(clusterName string) *cluster.Cluster {
 	mt, _ := ptypes.MarshalAny(tlsc)
 	return &cluster.Cluster{
 		Name:                 clusterName,
-		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
+		ConnectTimeout:       ptypes.DurationProto(25 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment:       makeEndpoint(clusterName),
