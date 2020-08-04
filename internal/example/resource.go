@@ -57,7 +57,7 @@ func makeCluster(clusterName string) *cluster.Cluster {
 				ConfigType: &core.TransportSocket_TypedConfig{
 					TypedConfig: mt,
 				},
-		}
+		},
 	}
 }
 
