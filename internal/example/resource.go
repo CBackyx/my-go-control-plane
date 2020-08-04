@@ -42,7 +42,7 @@ const (
 
 func makeCluster(clusterName string) *cluster.Cluster {
 	tlsc := &auth.UpstreamTlsContext{
-		sni:                  UpstreamHost,                 
+		Sni:                  UpstreamHost,                 
 	}
 	mt, _ := ptypes.MarshalAny(tlsc)
 	return &cluster.Cluster{
