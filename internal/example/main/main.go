@@ -22,7 +22,7 @@ import (
 	serverv3 "github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	testv3 "github.com/envoyproxy/go-control-plane/pkg/test/v3"
 
-	"github.com/envoyproxy/go-control-plane/internal/example"
+	"github.com/CBackyx/my-go-control-plane/internal/example"
 )
 
 var (
