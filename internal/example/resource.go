@@ -26,23 +26,23 @@ import (
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	auth "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
-	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	"github.com/CBackyx/my-go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 )
 
 const (
-	ClusterName  = "example_proxy_cluster"
+	UserClusterName  = "example_proxy_cluster"
 	RouteName    = "local_route"
 	ListenerName = "listener_0"
 	ListenerPort = 10000
-	UpstreamHost = "www.baidu.com"
-	UpstreamPort = 443
+	UserUpstreamHost = "www.baidu.com"
+	UserUpstreamPort = 443
 )
 
-func makeCluster(clusterName string) *cluster.Cluster {
+func makeTLSCluster(clusterName string, upstreamHost string, upstreamPort uint32) *cluster.Cluster {
 	tlsc := &auth.UpstreamTlsContext{
-		Sni:                  UpstreamHost,                 
+		Sni:                  upstreamHost,                 
 	}
 	mt, _ := ptypes.MarshalAny(tlsc)
 	return &cluster.Cluster{
@@ -50,7 +50,7 @@ func makeCluster(clusterName string) *cluster.Cluster {
 		ConnectTimeout:       ptypes.DurationProto(25 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment:       makeEndpoint(clusterName),
+		LoadAssignment:       makeEndpoint(clusterName, upstreamHost, upstreamPort),
 		TransportSocket:
 			&core.TransportSocket{
 				Name: "envoy.transport_sockets.tls",
@@ -61,7 +61,17 @@ func makeCluster(clusterName string) *cluster.Cluster {
 	}
 }
 
-func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
+func makeCluster(clusterName string, upstreamHost string, upstreamPort uint32) *cluster.Cluster {
+	return &cluster.Cluster{
+		Name:                 clusterName,
+		ConnectTimeout:       ptypes.DurationProto(25 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment:       makeEndpoint(clusterName, upstreamHost, upstreamPort),
+	}
+}
+
+func makeEndpoint(clusterName string, upstreamHost string, upstreamPort uint32) *endpoint.ClusterLoadAssignment {
 	return &endpoint.ClusterLoadAssignment{
 		ClusterName: clusterName,
 		Endpoints: []*endpoint.LocalityLbEndpoints{{
@@ -72,9 +82,9 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 							Address: &core.Address_SocketAddress{
 								SocketAddress: &core.SocketAddress{
 									Protocol: core.SocketAddress_TCP,
-									Address:  UpstreamHost,
+									Address:  upstreamHost,
 									PortSpecifier: &core.SocketAddress_PortValue{
-										PortValue: UpstreamPort,
+										PortValue: upstreamPort,
 									},
 								},
 							},
@@ -86,29 +96,37 @@ func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	}
 }
 
-func makeRoute(routeName string, clusterName string) *route.RouteConfiguration {
-	return &route.RouteConfiguration{
-		Name: routeName,
-		VirtualHosts: []*route.VirtualHost{{
-			Name:    "local_service",
-			Domains: []string{"*"},
-			Routes: []*route.Route{{
+func makeRoute(routeName string, clusterNames []string, prefixes []string, hostRewrites []string, prefixRewrites []string) *route.RouteConfiguration {
+	var routeList []*route.Route
+	for i := 0; i < len(prefixes); i++{
+		routeList = append(routeList, 
+			&route.Route{
 				Match: &route.RouteMatch{
 					PathSpecifier: &route.RouteMatch_Prefix{
-						Prefix: "/",
+						Prefix: prefixes[i],
 					},
 				},
 				Action: &route.Route_Route{
 					Route: &route.RouteAction{
 						ClusterSpecifier: &route.RouteAction_Cluster{
-							Cluster: clusterName,
+							Cluster: clusterNames[i],
 						},
 						HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-							HostRewriteLiteral: UpstreamHost,
+							HostRewriteLiteral: hostRewrites[i],
 						},
+						PrefixRewrite: prefixRewrites[i],
 					},
 				},
-			}},
+			},
+		)		
+	}
+
+	return &route.RouteConfiguration{
+		Name: routeName,
+		VirtualHosts: []*route.VirtualHost{{
+			Name:    "local_service",
+			Domains: []string{"*"},
+			Routes: routeList,
 		}},
 	}
 }
@@ -176,11 +194,16 @@ func makeConfigSource() *core.ConfigSource {
 }
 
 func GenerateSnapshot() cache.Snapshot {
+	routeClusterNames := []string{UserClusterName}
+	routePrefixes := []string{"/user"}
+	routeHostRewrites := []string{UserUpstreamHost}
+	routePrefixRewrites := []string{"/"}
+
 	return cache.NewSnapshot(
 		"1",
 		[]types.Resource{}, // endpoints
-		[]types.Resource{makeCluster(ClusterName)},
-		[]types.Resource{makeRoute(RouteName, ClusterName)},
+		[]types.Resource{makeTLSCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort)},
+		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites)},
 		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
 		[]types.Resource{}, // runtimes
 		[]types.Resource{}, // secrets

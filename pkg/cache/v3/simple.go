@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/log"
 )
@@ -206,9 +207,11 @@ func (cache *snapshotCache) CreateWatch(request Request) (chan Response, func())
 		info.mu.Lock()
 		info.watches[watchID] = ResponseWatch{Request: request, Response: value}
 		info.mu.Unlock()
+		cache.log.Debugf("hhhhhhhh-> " + "\n")
 		return value, cache.cancelWatch(nodeID, watchID)
 	}
 
+	cache.log.Debugf("hhhhhhhh-> 2" + "\n")
 	// otherwise, the watch may be responded immediately
 	cache.respond(request, value, snapshot.GetResources(request.TypeUrl), version)
 

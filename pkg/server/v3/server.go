@@ -21,6 +21,8 @@ import (
 	"errors"
 	"strconv"
 	"sync/atomic"
+	"log"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -35,8 +37,8 @@ import (
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
-	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/CBackyx/my-go-control-plane/pkg/cache/v3"
+	"github.com/CBackyx/my-go-control-plane/pkg/resource/v3"
 )
 
 // Server is a collection of handlers for streaming discovery requests.
@@ -459,13 +461,25 @@ func (s *server) process(stream stream, reqCh <-chan *discovery.DiscoveryRequest
 	}
 }
 
+
+func updataTicks(canLunch chan int) {
+    c := time.Tick(10 * time.Second)
+    for countDown := 20; countDown > 0; countDown-- {
+        log.Printf(string(countDown))
+        <- c
+    }
+    canLunch <- -1
+}
+
 // handler converts a blocking read call to channels and initiates stream processing
+
 func (s *server) handler(stream stream, typeURL string) error {
 	// a channel for receiving incoming requests
 	reqCh := make(chan *discovery.DiscoveryRequest)
 	reqStop := int32(0)
 	go func() {
 		for {
+			log.Printf("halo typeURL: " + typeURL + "\n")
 			req, err := stream.Recv()
 			if atomic.LoadInt32(&reqStop) != 0 {
 				return

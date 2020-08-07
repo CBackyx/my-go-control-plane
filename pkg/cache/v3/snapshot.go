@@ -18,6 +18,7 @@ package cache
 import (
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 )
@@ -106,6 +107,9 @@ func (s *Snapshot) GetResources(typeURL string) map[string]types.Resource {
 		return nil
 	}
 	typ := GetResponseType(typeURL)
+
+	log.Printf("hhhhhhhh-> " + typeURL + "\n")
+
 	if typ == types.UnknownType {
 		return nil
 	}
