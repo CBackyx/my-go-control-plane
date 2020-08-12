@@ -17,6 +17,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"log"
 
 	cachev3 "github.com/CBackyx/my-go-control-plane/pkg/cache/v3"
 	serverv3 "github.com/CBackyx/my-go-control-plane/pkg/server/v3"
@@ -54,7 +55,7 @@ func main() {
 	cache := cachev3.NewSnapshotCache(false, cachev3.IDHash{}, l)
 
 	// Create the snapshot that we'll serve to Envoy
-	snapshot := example.GenerateSnapshot()
+	snapshot := example.GenerateOriginalSnapshot()
 	if err := snapshot.Consistent(); err != nil {
 		l.Errorf("snapshot inconsistency: %+v\n%+v", snapshot, err)
 		os.Exit(1)
@@ -70,6 +71,20 @@ func main() {
 	// Run the xDS server
 	ctx := context.Background()
 	cb := &testv3.Callbacks{Debug: l.Debug}
-	srv := serverv3.NewServer(ctx, cache, cb)
+
+	var updateSignal serverv3.UpdateSignal
+	updateSignal.Init()
+
+	srv := serverv3.NewServer(ctx, cache, cb, &updateSignal)
+
+	log.Printf("herh here\n")
+
+	
+	go example.RunKServer(&updateSignal, cache)
+
 	example.RunServer(ctx, srv, port)
+
+	
+	
+
 }

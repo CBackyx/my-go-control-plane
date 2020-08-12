@@ -136,8 +136,22 @@ func (c CallbackFuncs) OnFetchResponse(req *discovery.DiscoveryRequest, resp *di
 }
 
 // NewServer creates handlers from a config watcher and callbacks.
-func NewServer(ctx context.Context, config cache.Cache, callbacks Callbacks) Server {
-	return &server{cache: config, callbacks: callbacks, ctx: ctx}
+func NewServer(ctx context.Context, config cache.Cache, callbacks Callbacks, usignal *UpdateSignal) Server {
+	return &server{cache: config, callbacks: callbacks, ctx: ctx, updateSignal: usignal}
+}
+
+type UpdateSignal struct {
+	Endpoints chan int
+	Clusters  chan int
+	Routes    chan int
+}
+
+// Initialize all watches
+func (signals *UpdateSignal) Init() {
+	// muxed channel needs a buffer to release go-routines populating it
+	signals.Endpoints = make(chan int, 1)
+	signals.Clusters = make(chan int, 1)
+	signals.Routes = make(chan int, 1)
 }
 
 type server struct {
@@ -147,6 +161,7 @@ type server struct {
 	// streamCount for counting bi-di streams
 	streamCount int64
 	ctx         context.Context
+	updateSignal *UpdateSignal 
 }
 
 type stream interface {
@@ -396,6 +411,7 @@ func (s *server) process(stream stream, reqCh <-chan *discovery.DiscoveryRequest
 						values.endpointCancel()
 					}
 					values.endpoints, values.endpointCancel = s.cache.CreateWatch(*req)
+					go s.updateEndpoints(stream, *req)
 				}
 			case req.TypeUrl == resource.ClusterType:
 				if values.clusterNonce == "" || values.clusterNonce == nonce {
@@ -403,6 +419,7 @@ func (s *server) process(stream stream, reqCh <-chan *discovery.DiscoveryRequest
 						values.clusterCancel()
 					}
 					values.clusters, values.clusterCancel = s.cache.CreateWatch(*req)
+					go s.updateClusters(stream, *req)
 				}
 			case req.TypeUrl == resource.RouteType:
 				if values.routeNonce == "" || values.routeNonce == nonce {
@@ -410,6 +427,7 @@ func (s *server) process(stream stream, reqCh <-chan *discovery.DiscoveryRequest
 						values.routeCancel()
 					}
 					values.routes, values.routeCancel = s.cache.CreateWatch(*req)
+					go s.updateRoutes(stream, *req)
 				}
 			case req.TypeUrl == resource.ListenerType:
 				if values.listenerNonce == "" || values.listenerNonce == nonce {
@@ -503,6 +521,58 @@ func (s *server) handler(stream stream, typeURL string) error {
 
 func (s *server) StreamAggregatedResources(stream discoverygrpc.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
 	return s.handler(stream, resource.AnyType)
+}
+
+// sends a response by serializing to protobuf Any
+func updateSend(stream stream, resp cache.Response, typeURL string) error {
+	out, err := createResponse(resp, typeURL)
+	if err != nil {
+		return err
+	}
+	out.Nonce = time.Now().String()
+	return stream.Send(out)
+}
+
+func (s *server) updateEndpoints (stream stream, request cache.Request) error {
+	for{
+        select{
+			case <- s.updateSignal.Endpoints:
+				dresp := s.cache.GetDirectResponse(request)
+				err := updateSend(stream, dresp, resource.EndpointType)
+				log.Printf("Update endpoint repsonse\n");
+				if err != nil {
+					return err
+				}
+        }
+    }
+}
+
+func (s *server) updateClusters (stream stream, request cache.Request) error {
+	for{
+        select{
+			case <- s.updateSignal.Clusters:		
+				dresp := s.cache.GetDirectResponse(request)
+				err := updateSend(stream, dresp, resource.EndpointType)
+				log.Printf("Update cluster repsonse\n");
+				if err != nil {
+					return err
+				}
+        }
+    }
+}
+
+func (s *server) updateRoutes (stream stream, request cache.Request) error {
+	for{
+        select{
+			case <- s.updateSignal.Routes:		
+				dresp := s.cache.GetDirectResponse(request)
+				err := updateSend(stream, dresp, resource.RouteType)
+				log.Printf("Update route repsonse\n");
+				if err != nil {
+					return err
+				}
+        }
+    }
 }
 
 func (s *server) StreamEndpoints(stream endpointservice.EndpointDiscoveryService_StreamEndpointsServer) error {

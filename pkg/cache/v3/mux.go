@@ -49,3 +49,7 @@ func (mux *MuxCache) CreateWatch(request Request) (chan Response, func()) {
 func (mux *MuxCache) Fetch(ctx context.Context, request Request) (Response, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (cache *MuxCache)GetDirectResponse(request Request) Response {
+	return nil
+}

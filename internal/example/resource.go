@@ -15,8 +15,10 @@ package example
 
 import (
 	"time"
+	"strconv"
 
 	"github.com/golang/protobuf/ptypes"
+	wrappers "github.com/golang/protobuf/ptypes/wrappers"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -29,15 +31,20 @@ import (
 	"github.com/CBackyx/my-go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	v31 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 )
 
 const (
-	UserClusterName  = "example_proxy_cluster"
+	UserClusterName  = "user_proxy_cluster"
 	RouteName    = "local_route"
 	ListenerName = "listener_0"
 	ListenerPort = 10000
-	UserUpstreamHost = "www.baidu.com"
-	UserUpstreamPort = 443
+	UserUpstreamHost = "192.168.65.2"
+	UserUpstreamPort = 8081
+
+	TempHandlerClusterName = "temphandler_cluster"
+	TempHandlerUpsteamHost = "192.168.65.2"
+	TempHandlerUpsteamPort = 10001
 )
 
 func makeTLSCluster(clusterName string, upstreamHost string, upstreamPort uint32) *cluster.Cluster {
@@ -65,7 +72,7 @@ func makeCluster(clusterName string, upstreamHost string, upstreamPort uint32) *
 	return &cluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       ptypes.DurationProto(25 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
+		// ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment:       makeEndpoint(clusterName, upstreamHost, upstreamPort),
 	}
@@ -96,29 +103,97 @@ func makeEndpoint(clusterName string, upstreamHost string, upstreamPort uint32) 
 	}
 }
 
-func makeRoute(routeName string, clusterNames []string, prefixes []string, hostRewrites []string, prefixRewrites []string) *route.RouteConfiguration {
+func makeRoute(routeName string, clusterNames []string, prefixes []string, hostRewrites []string, prefixRewrites []string, regexPatterns []string, headerPatterns []string, routeTypes []int) *route.RouteConfiguration {
 	var routeList []*route.Route
+	regexsub := `/\1`
+
 	for i := 0; i < len(prefixes); i++{
-		routeList = append(routeList, 
-			&route.Route{
-				Match: &route.RouteMatch{
-					PathSpecifier: &route.RouteMatch_Prefix{
-						Prefix: prefixes[i],
+		if routeTypes[i] == 0 {
+			routeList = append(routeList, 
+				&route.Route{
+					Match: &route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_Prefix{
+							Prefix: prefixes[i],
+						},
+					},
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: clusterNames[i],
+							},
+							HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+								HostRewriteLiteral: hostRewrites[i],
+							},
+							PrefixRewrite: prefixRewrites[i],
+						},
 					},
 				},
-				Action: &route.Route_Route{
-					Route: &route.RouteAction{
-						ClusterSpecifier: &route.RouteAction_Cluster{
-							Cluster: clusterNames[i],
+			)
+		} else if routeTypes[i] == 1 {
+			routeList = append(routeList, 
+				&route.Route{
+					Match: &route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_Prefix{
+							Prefix: prefixes[i],
 						},
-						HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
-							HostRewriteLiteral: hostRewrites[i],
+						Headers: []*route.HeaderMatcher{
+							&route.HeaderMatcher{
+								Name: "token",
+								HeaderMatchSpecifier: &route.HeaderMatcher_ExactMatch{
+									ExactMatch: headerPatterns[i], 
+								},
+								InvertMatch: false,
+							},
 						},
-						PrefixRewrite: prefixRewrites[i],
+					},
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: clusterNames[i],
+							},
+							HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+								HostRewriteLiteral: hostRewrites[i],
+							},
+							PrefixRewrite: prefixRewrites[i],
+						},
 					},
 				},
-			},
-		)		
+			)
+		} else if routeTypes[i] == 2 {
+			routeList = append(routeList, 
+				&route.Route{
+					Match: &route.RouteMatch{
+						PathSpecifier: &route.RouteMatch_SafeRegex{
+							SafeRegex: &v31.RegexMatcher{
+								EngineType: &v31.RegexMatcher_GoogleRe2{
+									GoogleRe2: &v31.RegexMatcher_GoogleRE2{},
+								},
+								Regex: regexPatterns[i],
+							},
+						},
+					},
+					Action: &route.Route_Route{
+						Route: &route.RouteAction{
+							ClusterSpecifier: &route.RouteAction_Cluster{
+								Cluster: clusterNames[i],
+							},
+							HostRewriteSpecifier: &route.RouteAction_HostRewriteLiteral{
+								HostRewriteLiteral: hostRewrites[i],
+							},
+							RegexRewrite: &v31.RegexMatchAndSubstitute{
+								Pattern: &v31.RegexMatcher{
+									EngineType: &v31.RegexMatcher_GoogleRe2{
+										GoogleRe2: &v31.RegexMatcher_GoogleRE2{},
+									},
+									Regex: regexPatterns[i],
+								},
+								Substitution: regexsub,
+							},
+						},
+					},
+				},
+			)			
+		}
 	}
 
 	return &route.RouteConfiguration{
@@ -134,6 +209,10 @@ func makeRoute(routeName string, clusterNames []string, prefixes []string, hostR
 func makeHTTPListener(listenerName string, route string) *listener.Listener {
 	// HTTP filter configuration
 	manager := &hcm.HttpConnectionManager{
+		UpgradeConfigs: []*hcm.HttpConnectionManager_UpgradeConfig{{
+			UpgradeType: "websocket",
+			Enabled:     &wrappers.BoolValue{Value: true},
+		}},
 		CodecType:  hcm.HttpConnectionManager_AUTO,
 		StatPrefix: "http",
 		RouteSpecifier: &hcm.HttpConnectionManager_Rds{
@@ -193,19 +272,131 @@ func makeConfigSource() *core.ConfigSource {
 	return source
 }
 
-func GenerateSnapshot() cache.Snapshot {
+func GenerateSnapshot(tokenMap map[string]SingleRouteInfo) cache.Snapshot {
+	// Get original SnapshotFeed, some fixed pattern
+	originalSnapshotFeed :=	GenerateOriginalSnapshotFeed()
+	for _, sri := range tokenMap {
+		originalSnapshotFeed.clusters = append(originalSnapshotFeed.routes, makeCluster(sri.clusterName, sri.routeHostRewrite, sri.hostPort))		
+	}
+
+	// Append original route set
 	routeClusterNames := []string{UserClusterName}
 	routePrefixes := []string{"/user"}
 	routeHostRewrites := []string{UserUpstreamHost}
-	routePrefixRewrites := []string{"/"}
+	routePrefixRewrites := []string{"/user"}
+	routeTypes := []int{0}
+	routeRegexes := []string{""}
+	routeHeaders := []string{""}
+
+	// Append token->container route set, including header match
+	for _, sri := range tokenMap {
+		routeClusterNames = append(routeClusterNames, sri.clusterName)
+		routePrefixes = append(routePrefixes, sri.routePrefix)
+		routeHostRewrites = append(routeHostRewrites, sri.routeHostRewrite)
+		routePrefixRewrites = append(routePrefixRewrites, sri.routePrefixRewrite)
+		routeTypes = append(routeTypes, 1)
+		routeRegexes = append(routeRegexes, "")
+		routeHeaders = append(routeHeaders, sri.matchToken)	
+	}
+
+	// Append regex match, to handle unmatched token->container above
+	routeClusterNames = append(routeClusterNames, TempHandlerClusterName)
+	routePrefixes = append(routePrefixes, "/webide/")
+	routeHostRewrites = append(routeHostRewrites, TempHandlerUpsteamHost)
+	routePrefixRewrites = append(routePrefixRewrites, "")
+	routeTypes = append(routeTypes, 2)
+	routeRegexes = append(routeRegexes, `^/webide/[abc]lo/(.*)$`)
+	routeHeaders = append(routeHeaders, "")		
 
 	return cache.NewSnapshot(
 		"1",
 		[]types.Resource{}, // endpoints
-		[]types.Resource{makeTLSCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort)},
-		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites)},
+		originalSnapshotFeed.clusters,
+		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
 		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
 		[]types.Resource{}, // runtimes
 		[]types.Resource{}, // secrets
 	)
 }
+
+func GenerateOriginalSnapshot() cache.Snapshot {
+
+	routeClusterNames := []string{UserClusterName}
+	routePrefixes := []string{"/webide/hwudhdnnsjwkzjnsnwjw/"}
+	routeHostRewrites := []string{UserUpstreamHost}
+	routePrefixRewrites := []string{"/"}
+	routeTypes := []int{0}
+	routeRegexes := []string{}
+	routeHeaders := []string{}
+
+	return cache.NewSnapshot(
+		"1",
+		[]types.Resource{}, // endpoints
+		[]types.Resource{makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort)},
+		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
+		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
+		[]types.Resource{}, // runtimes
+		[]types.Resource{}, // secrets
+	)
+}
+
+type SingleRouteInfo struct {
+	clusterName        string
+	routePrefix        string
+	hostPort           uint32
+	routeHostRewrite   string
+	routePrefixRewrite string
+	routeRegex         string
+	matchToken         string
+}
+
+type SnapshotFeed struct {
+	endpoints []types.Resource
+	clusters  []types.Resource
+	routes    []types.Resource
+	listeners []types.Resource
+	runtimes  []types.Resource
+	secrets   []types.Resource
+}
+
+func GenerateOriginalSnapshotFeed() SnapshotFeed {
+	routeClusterNames := []string{UserClusterName}
+	routePrefixes := []string{"/user"}
+	routeHostRewrites := []string{UserUpstreamHost}
+	routePrefixRewrites := []string{"/user"}
+	routeTypes := []int{0}
+	routeRegexes := []string{""}
+	routeHeaders := []string{""}
+
+	return SnapshotFeed{
+		[]types.Resource{}, // endpoints
+		[]types.Resource{makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort), },
+		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
+		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
+		[]types.Resource{}, // runtimes
+		[]types.Resource{}, // secrets
+	}
+}
+
+func GenerateTestSnapshot(num int) cache.Snapshot {
+	routeClusterNames := []string{UserClusterName, "regex_cluster"}
+	routePrefixes := []string{"/webide/" + strconv.Itoa(num) + "/", "/webide/"}
+	routeHostRewrites := []string{UserUpstreamHost, UserUpstreamHost}
+	routePrefixRewrites := []string{"/", "/"}
+	routeTypes := []int{1, 2}
+	routeRegexes := []string{"", `^/webide/[abc]lo/(.*)$`}
+	routeHeaders := []string{"ahjsmnvabhfvaeub", ""}
+
+
+	return cache.NewSnapshot(
+		"1",
+		[]types.Resource{}, // endpoints
+		[]types.Resource{makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort), makeCluster("regex_cluster", UserUpstreamHost, UserUpstreamPort)},
+		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
+		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
+		[]types.Resource{}, // runtimes
+		[]types.Resource{}, // secrets
+	)
+}
+
+

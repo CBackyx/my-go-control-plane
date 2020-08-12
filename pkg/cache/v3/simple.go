@@ -283,6 +283,42 @@ func createResponse(request Request, resources map[string]types.Resource, versio
 	}
 }
 
+func (cache *snapshotCache)GetDirectResponse(request Request) Response {
+	nodeID := cache.hash.ID(request.Node)
+	snapshot, exists := cache.snapshots[nodeID]
+
+	if !exists {
+		return nil
+	}
+
+	version := snapshot.GetVersion(request.TypeUrl)
+	resources := snapshot.GetResources(request.TypeUrl)
+
+	filtered := make([]types.Resource, 0, len(resources))
+
+	// Reply only with the requested resources. Envoy may ask each resource
+	// individually in a separate stream. It is ok to reply with the same version
+	// on separate streams since requests do not share their response versions.
+	if len(request.ResourceNames) != 0 {
+		set := nameSet(request.ResourceNames)
+		for name, resource := range resources {
+			if set[name] {
+				filtered = append(filtered, resource)
+			}
+		}
+	} else {
+		for _, resource := range resources {
+			filtered = append(filtered, resource)
+		}
+	}
+
+	return RawResponse{
+		Request:   request,
+		Version:   version,
+		Resources: filtered,
+	}
+}
+
 // Fetch implements the cache fetch function.
 // Fetch is called on multiple streams, so responding to individual names with the same version works.
 func (cache *snapshotCache) Fetch(ctx context.Context, request Request) (Response, error) {
