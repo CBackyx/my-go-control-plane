@@ -1,0 +1,33 @@
+trigger:
+  branches:
+    include:
+    - master
+mr:
+  branches:
+    include:
+    - master
+
+stages:
+- stage:
+  - job:
+      name: Linux Job
+      pool:
+        container: mirrors.tencent.com/ci/tlinux_ci:latest
+      steps:
+      - taskType: bash@latest
+        displayName: "Go Build"
+        inputs:
+          scriptType: SHELL
+          content: |
+            #!/bin/bash
+            go build -race -v -o main ./internal/example/main/main.go
+      - taskType: marketBuild@latest
+        displayName: Upload Artifacts
+        inputs:
+          atomCode: UploadArtifactory
+          name: 归档构件
+          version: 1.*
+          data:
+            input:
+              filePath: ".ci.yml"
+              isCustomize: false
