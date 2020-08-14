@@ -51,6 +51,9 @@ func init() {
 func main() {
 	flag.Parse()
 
+	// init ENV configuration
+	example.InitFixedInfo()
+
 	// Create a cache
 	cache := cachev3.NewSnapshotCache(false, cachev3.IDHash{}, l)
 

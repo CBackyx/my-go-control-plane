@@ -17,6 +17,8 @@ import (
 	"time"
 	"strconv"
 	"os"
+	"fmt"
+	"encoding/json"
 
 	"github.com/golang/protobuf/ptypes"
 	wrappers "github.com/golang/protobuf/ptypes/wrappers"
@@ -49,12 +51,46 @@ const (
 
 )
 
-var TempHandlerUpsteamHost = os.Getenv("TEMP_HANDLER_HOST")
-var TempHandlerUpsteamPort_int, err1 = strconv.Atoi(os.Getenv("TEMP_HANDLER_HOST_PORT"))
-var TempHandlerUpsteamPort = uint32(TempHandlerUpsteamPort_int)
-var MiddlewareUpsteamHost = os.Getenv("MIDDLEWARE_HOST")
-var MiddlewareUpsteamPort_int, err2 = strconv.Atoi(os.Getenv("MIDDLEWARE_HOST_PORT"))
-var MiddlewareUpsteamPort = uint32(MiddlewareUpsteamPort_int)
+type FixedInfo struct {
+	TempHandlerUpsteamHost string
+	TempHandlerUpsteamPort uint32
+	MiddlewareUpsteamHost string
+	MiddlewareUpsteamPort uint32
+}
+
+var TempHandlerUpsteamHost string
+var TempHandlerUpsteamPort uint32
+var MiddlewareUpsteamHost string
+var MiddlewareUpsteamPort uint32
+
+func InitFixedInfo() error {
+	filePtr, err := os.Open("fixed_info.json")
+    if err != nil {
+        fmt.Println("Open file failed [Err:%s]", err.Error())
+        return nil
+    }
+    defer filePtr.Close()
+
+    var fix1 []FixedInfo
+
+    // 创建json解码器
+    decoder := json.NewDecoder(filePtr)
+    err = decoder.Decode(&fix1)
+    if err != nil {
+        fmt.Println("Decoder failed", err.Error())
+		return nil
+    } else {
+        fmt.Println("Decoder success")
+        fmt.Println(fix1)
+	}
+	
+	TempHandlerUpsteamHost = fix1[0].TempHandlerUpsteamHost
+	TempHandlerUpsteamPort = fix1[0].TempHandlerUpsteamPort
+	MiddlewareUpsteamHost = fix1[0].MiddlewareUpsteamHost
+	MiddlewareUpsteamPort = fix1[0].MiddlewareUpsteamPort
+
+	return nil
+}
 
 func makeTLSCluster(clusterName string, upstreamHost string, upstreamPort uint32) *cluster.Cluster {
 	tlsc := &auth.UpstreamTlsContext{
