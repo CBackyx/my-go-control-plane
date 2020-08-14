@@ -16,6 +16,7 @@ package example
 import (
 	"time"
 	"strconv"
+	"os"
 
 	"github.com/golang/protobuf/ptypes"
 	wrappers "github.com/golang/protobuf/ptypes/wrappers"
@@ -43,9 +44,17 @@ const (
 	UserUpstreamPort = 8081
 
 	TempHandlerClusterName = "temphandler_cluster"
-	TempHandlerUpsteamHost = "192.168.65.2"
-	TempHandlerUpsteamPort = 10001
+
+	MiddlewareClusterName = "middleware_cluster"
+
 )
+
+var TempHandlerUpsteamHost = os.Getenv("TEMP_HANDLER_HOST")
+var TempHandlerUpsteamPort_int, err1 = strconv.Atoi(os.Getenv("TEMP_HANDLER_HOST_PORT"))
+var TempHandlerUpsteamPort = uint32(TempHandlerUpsteamPort_int)
+var MiddlewareUpsteamHost = os.Getenv("MIDDLEWARE_HOST")
+var MiddlewareUpsteamPort_int, err2 = strconv.Atoi(os.Getenv("MIDDLEWARE_HOST_PORT"))
+var MiddlewareUpsteamPort = uint32(MiddlewareUpsteamPort_int)
 
 func makeTLSCluster(clusterName string, upstreamHost string, upstreamPort uint32) *cluster.Cluster {
 	tlsc := &auth.UpstreamTlsContext{
@@ -280,13 +289,20 @@ func GenerateSnapshot(tokenMap map[string]SingleRouteInfo) cache.Snapshot {
 	}
 
 	// Append original route set
-	routeClusterNames := []string{UserClusterName}
-	routePrefixes := []string{"/user"}
-	routeHostRewrites := []string{UserUpstreamHost}
-	routePrefixRewrites := []string{"/user"}
-	routeTypes := []int{0}
-	routeRegexes := []string{""}
-	routeHeaders := []string{""}
+	// routeClusterNames := []string{UserClusterName}
+	// routePrefixes := []string{"/user"}
+	// routeHostRewrites := []string{UserUpstreamHost}
+	// routePrefixRewrites := []string{"/user"}
+	// routeTypes := []int{0}
+	// routeRegexes := []string{""}
+	// routeHeaders := []string{""}
+	routeClusterNames := []string{UserClusterName, TempHandlerClusterName, MiddlewareClusterName}
+	routePrefixes := []string{"/user", "/temphandler/", "/middleware/"}
+	routeHostRewrites := []string{UserUpstreamHost, TempHandlerUpsteamHost, MiddlewareUpsteamHost}
+	routePrefixRewrites := []string{"/user", "/temphandler/", "/middleware/"}
+	routeTypes := []int{0, 0, 0}
+	routeRegexes := []string{"", "", ""}
+	routeHeaders := []string{"", "", ""}
 
 	// Append token->container route set, including header match
 	for _, sri := range tokenMap {
@@ -321,18 +337,40 @@ func GenerateSnapshot(tokenMap map[string]SingleRouteInfo) cache.Snapshot {
 
 func GenerateOriginalSnapshot() cache.Snapshot {
 
-	routeClusterNames := []string{UserClusterName}
-	routePrefixes := []string{"/webide/hwudhdnnsjwkzjnsnwjw/"}
-	routeHostRewrites := []string{UserUpstreamHost}
-	routePrefixRewrites := []string{"/"}
-	routeTypes := []int{0}
-	routeRegexes := []string{}
-	routeHeaders := []string{}
+	// routeClusterNames := []string{UserClusterName}
+	// routePrefixes := []string{"/webide/hwudhdnnsjwkzjnsnwjw/"}
+	// routeHostRewrites := []string{UserUpstreamHost}
+	// routePrefixRewrites := []string{"/"}
+	// routeTypes := []int{0}
+	// routeRegexes := []string{}
+	// routeHeaders := []string{}
+
+	// return cache.NewSnapshot(
+	// 	"1",
+	// 	[]types.Resource{}, // endpoints
+	// 	[]types.Resource{makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort)},
+	// 	[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
+	// 	[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
+	// 	[]types.Resource{}, // runtimes
+	// 	[]types.Resource{}, // secrets
+	// )
+
+	routeClusterNames := []string{UserClusterName, TempHandlerClusterName, MiddlewareClusterName}
+	routePrefixes := []string{"/user", "/temphandler/", "/middleware/"}
+	routeHostRewrites := []string{UserUpstreamHost, TempHandlerUpsteamHost, MiddlewareUpsteamHost}
+	routePrefixRewrites := []string{"/user", "/temphandler/", "/middleware/"}
+	routeTypes := []int{0, 0, 0}
+	routeRegexes := []string{"", "", ""}
+	routeHeaders := []string{"", "", ""}
 
 	return cache.NewSnapshot(
 		"1",
 		[]types.Resource{}, // endpoints
-		[]types.Resource{makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort)},
+		[]types.Resource{
+						makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort), 
+						makeCluster(TempHandlerClusterName, TempHandlerUpsteamHost, TempHandlerUpsteamPort),
+						makeCluster(MiddlewareClusterName, MiddlewareUpsteamHost, MiddlewareUpsteamPort),
+					},
 		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
 		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
 		[]types.Resource{}, // runtimes
@@ -360,17 +398,21 @@ type SnapshotFeed struct {
 }
 
 func GenerateOriginalSnapshotFeed() SnapshotFeed {
-	routeClusterNames := []string{UserClusterName}
-	routePrefixes := []string{"/user"}
-	routeHostRewrites := []string{UserUpstreamHost}
-	routePrefixRewrites := []string{"/user"}
-	routeTypes := []int{0}
-	routeRegexes := []string{""}
-	routeHeaders := []string{""}
+	routeClusterNames := []string{UserClusterName, TempHandlerClusterName, MiddlewareClusterName}
+	routePrefixes := []string{"/user", "/temphandler/", "/middleware/"}
+	routeHostRewrites := []string{UserUpstreamHost, TempHandlerUpsteamHost, MiddlewareUpsteamHost}
+	routePrefixRewrites := []string{"/user", "/temphandler/", "/middleware/"}
+	routeTypes := []int{0, 0, 0}
+	routeRegexes := []string{"", "", ""}
+	routeHeaders := []string{"", "", ""}
 
 	return SnapshotFeed{
 		[]types.Resource{}, // endpoints
-		[]types.Resource{makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort), },
+		[]types.Resource{
+						makeCluster(UserClusterName, UserUpstreamHost, UserUpstreamPort), 
+						makeCluster(TempHandlerClusterName, TempHandlerUpsteamHost, TempHandlerUpsteamPort),
+						makeCluster(MiddlewareClusterName, MiddlewareUpsteamHost, MiddlewareUpsteamPort),
+					},
 		[]types.Resource{makeRoute(RouteName, routeClusterNames, routePrefixes, routeHostRewrites, routePrefixRewrites, routeRegexes, routeHeaders, routeTypes)},
 		[]types.Resource{makeHTTPListener(ListenerName, RouteName)},
 		[]types.Resource{}, // runtimes

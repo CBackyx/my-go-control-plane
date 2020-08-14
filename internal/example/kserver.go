@@ -19,7 +19,7 @@ func RunKServer(updateSignal *serverv3.UpdateSignal, cache cachev3.SnapshotCache
 	
 	// tokenMap := make(map[string]SingleRouteInfo)
 
-	go testUpdate(updateSignal, cache)
+	// go testUpdate(updateSignal, cache)
 
 	// config := sarama.NewConfig()
 	// config.Consumer.Return.Errors = true
